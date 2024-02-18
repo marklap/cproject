@@ -2,7 +2,6 @@ package cproject_test
 
 import (
 	"errors"
-	"io"
 	"os"
 	"reflect"
 	"strings"
@@ -47,36 +46,44 @@ func TestNewLogFile(t *testing.T) {
 }
 
 func TestLogFileReadLines(t *testing.T) {
-	logFile, err := fxtLogFile("fake.txt", fxtReader(fxtContent()))
+	file, err := cproject.FxtFile(t, cproject.FxtContent())
+	if err != nil {
+		t.Error(err)
+	}
+	logFile, err := cproject.FxtLogFile(file.Name(), file)
 	if err != nil {
 		t.Error(err)
 	}
 
-	want := strings.Split(fxtContent(), "\n")
+	want := strings.Split(cproject.FxtContent(), "\n")
 	got, err := logFile.ReadLines()
 	if err != nil {
 		t.Error(err)
 	}
 
-	if !StringSlicesEqual(want, got) {
+	if !cproject.StringSlicesEqual(want, got) {
 		t.Errorf("unexpected content - want: %#v, got: %#v", want, got)
 	}
 }
 
 func TestLogFileTailLines(t *testing.T) {
-	logFile, err := fxtLogFile("fake.txt", fxtReader(fxtContent()))
+	file, err := cproject.FxtFile(t, cproject.FxtContent())
+	if err != nil {
+		t.Error(err)
+	}
+	logFile, err := cproject.FxtLogFile(file.Name(), file)
 	if err != nil {
 		t.Error(err)
 	}
 
-	content := strings.Split(fxtContent(), "\n")
+	content := strings.Split(cproject.FxtContent(), "\n")
 	want := content[len(content)-2:]
 	got, err := logFile.TailLines(2)
 	if err != nil {
 		t.Error(err)
 	}
 
-	if !StringSlicesEqual(want, got) {
+	if !cproject.StringSlicesEqual(want, got) {
 		t.Errorf("unexpected content - want: %#v, got: %#v", want, got)
 	}
 }
@@ -118,53 +125,45 @@ func TestNewFilteredLogFile(t *testing.T) {
 }
 
 func TestFilteredLogFileReadLines(t *testing.T) {
-	logFile, err := fxtLogFile("fake.txt", fxtReader(fxtContent()))
+	file, err := cproject.FxtFile(t, cproject.FxtContent())
+	if err != nil {
+		t.Error(err)
+	}
+	logFile, err := cproject.FxtLogFile(file.Name(), file)
 	if err != nil {
 		t.Error(err)
 	}
 
-	filtLogFile := fxtFilteredLogFile(logFile, []string{"things", "cache"})
+	filtLogFile := cproject.FxtFilteredLogFile(logFile, []string{"things", "cache"})
 	want := []string{"cache invalidation,", "naming things,"}
 	got, err := filtLogFile.ReadLines()
 	if err != nil {
 		t.Error(err)
 	}
 
-	if !StringSlicesEqual(want, got) {
+	if !cproject.StringSlicesEqual(want, got) {
 		t.Errorf("unexpected content - want: %#v, got: %#v", want, got)
 	}
 }
 
 func TestFilteredLogFileTailLines(t *testing.T) {
-	logFile, err := fxtLogFile("fake.txt", fxtReader(fxtContent()))
+	file, err := cproject.FxtFile(t, cproject.FxtContent())
+	if err != nil {
+		t.Error(err)
+	}
+	logFile, err := cproject.FxtLogFile(file.Name(), file)
 	if err != nil {
 		t.Error(err)
 	}
 
-	filtLogFile := fxtFilteredLogFile(logFile, []string{"things", "cache"})
+	filtLogFile := cproject.FxtFilteredLogFile(logFile, []string{"things", "cache"})
 	want := []string{"naming things,"}
 	got, err := filtLogFile.TailLines(1)
 	if err != nil {
 		t.Error(err)
 	}
 
-	if !StringSlicesEqual(want, got) {
+	if !cproject.StringSlicesEqual(want, got) {
 		t.Errorf("unexpected content - want: %#v, got: %#v", want, got)
 	}
-}
-
-func fxtContent() string {
-	return "There are 2 hard problems in computer science:\ncache invalidation,\nnaming things,\nand off-by-1 errors."
-}
-
-func fxtReader(content string) io.ReadCloser {
-	return io.NopCloser(strings.NewReader(content))
-}
-
-func fxtLogFile(path string, reader io.ReadCloser) (*cproject.LogFile, error) {
-	return cproject.NewLogFile(path, cproject.WithReader(reader))
-}
-
-func fxtFilteredLogFile(lf *cproject.LogFile, substrings []string) *cproject.FilteredLogFile {
-	return cproject.NewFilteredLogFile(lf, cproject.AddFilter(cproject.NewMatchAnySubstring(cproject.WithSubstrings(substrings))))
 }
