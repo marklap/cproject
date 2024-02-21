@@ -33,8 +33,8 @@ func (r *TailRequest) String() string {
 
 // TailResponseChunk is a response is a single line from a file.
 type TailResponseChunk struct {
-	Hostname string `json:"hostname"`
-	Line     string `json:"line"`
+	Host string `json:"host"`
+	Line string `json:"line"`
 }
 
 func validPrefix(path string, pathPrefixes []string) bool {
@@ -48,7 +48,7 @@ func validPrefix(path string, pathPrefixes []string) bool {
 }
 
 // TailHandler handles requests to tail a log file.
-func TailHandler(logger *log.Logger, hostname string, rootPaths []string) http.Handler {
+func TailHandler(logger *log.Logger, host string, pathPrefixes []string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// decode the incoming request
 		decoder := json.NewDecoder(r.Body)
@@ -62,7 +62,7 @@ func TailHandler(logger *log.Logger, hostname string, rootPaths []string) http.H
 		logger.Printf("tail request: %s", req.String())
 
 		// validation
-		if !validPrefix(req.Path, rootPaths) {
+		if !validPrefix(req.Path, pathPrefixes) {
 			logger.Printf("bad tail request - error: invalid path: %s", req.Path)
 			w.WriteHeader(http.StatusNotFound)
 			return
@@ -104,8 +104,8 @@ func TailHandler(logger *log.Logger, hostname string, rootPaths []string) http.H
 		for line := range lines {
 			lineBytesOut += int64(len([]byte(line)))
 			chunk := TailResponseChunk{
-				Hostname: hostname,
-				Line:     line,
+				Host: host,
+				Line: line,
 			}
 			WriteJSONCompact(w, &chunk)
 		}

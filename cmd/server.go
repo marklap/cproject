@@ -58,7 +58,7 @@ func main() {
 	mux := http.NewServeMux()
 
 	mux.Handle("/ping", handlers.PingHandler(logger))
-	mux.Handle("/tail", handlers.TailHandler(logger, hostname, pathPrefixes))
+	mux.Handle("/tail", handlers.TailHandler(logger, fmt.Sprintf("%s:%d", hostname, listenPort), pathPrefixes))
 
 	listenAddr := fmt.Sprintf("%s:%d", listenIP, listenPort)
 	logger.Printf("%s API server is listening on %s...", ProjectName, listenAddr)
