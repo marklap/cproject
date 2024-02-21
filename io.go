@@ -2,7 +2,6 @@ package cproject
 
 import (
 	"bytes"
-	"fmt"
 	"io"
 	"os"
 )
@@ -170,7 +169,6 @@ func yieldLines(file *os.File, numLines int, filters []Filter, lines chan<- stri
 		for i := start; i >= end; i-- {
 			if buf[i] == newline {
 				if include, line := includeLine(lineBuf, filters); include {
-					fmt.Printf("[numLines: %d] include line: %s\n", numLines, line)
 					lines <- line
 					nlCount++
 					if nlCount == numLines {

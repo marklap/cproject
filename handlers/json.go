@@ -1,4 +1,4 @@
-package main
+package handlers
 
 import (
 	"encoding/json"
@@ -11,17 +11,27 @@ type ErrorResponse struct {
 	Error error `json:"error"`
 }
 
-// WriteJSON writes a value to the writer as JSON
-func WriteJSON(w io.Writer, v interface{}) error {
+// WriteJSONWithIndent writes a value to the writer as JSON with a specific indent setting.
+func WriteJSONWithIndent(w io.Writer, v interface{}, indentPrefix, indentIndent string) error {
 	enc := json.NewEncoder(w)
-	enc.SetIndent("", "  ")
+	enc.SetIndent(indentPrefix, indentIndent)
 	return enc.Encode(v)
+}
+
+// WriteJSONCompact writes a value to the writer as compact JSON
+func WriteJSONCompact(w io.Writer, v interface{}) error {
+	return WriteJSONWithIndent(w, v, "", "")
+}
+
+// WriteJSON writes a value to the writer as JSON with readable indent.
+func WriteJSON(w io.Writer, v interface{}) error {
+	return WriteJSONWithIndent(w, v, "", "  ")
 }
 
 // WriteJSONErrorWithStatus writes the error with specific status.
 func WriteJSONErrorWithStatus(w http.ResponseWriter, err error, status int) {
 	w.WriteHeader(status)
-	WriteJSON(w, ErrorResponse{err})
+	WriteJSON(w, &ErrorResponse{err})
 }
 
 // WriteJSONServerError writes the error to the writer as JSON with an internal server error response code.

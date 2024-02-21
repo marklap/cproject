@@ -17,6 +17,9 @@ type LogFileReader interface {
 	// TailLines returns a string slice of the last `n` lines of the log file; one string per line in the log file.
 	TailLines(int) ([]string, error)
 
+	// YieldLines returns a string channel and an error channel for streaming lines from a log file.
+	YieldLines(int, []Filter) (chan string, chan error)
+
 	// Close closes the log file.
 	Close() error
 }
@@ -96,6 +99,16 @@ func (l *LogFile) TailLines(n int) ([]string, error) {
 	}
 
 	return content[lc-n:], nil
+}
+
+// YieldLines returns a string channel and an error channel for streaming lines from a log file.
+func (l *LogFile) YieldLines(numLines int, filters []Filter) (chan string, chan error) {
+	lines := make(chan string, 1)
+	errChan := make(chan error, 1)
+
+	go yieldLines(l.file, numLines, filters, lines, errChan)
+
+	return lines, errChan
 }
 
 // Close closes the log file handle.
