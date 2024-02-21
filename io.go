@@ -171,7 +171,7 @@ func yieldLines(file *os.File, numLines int, filters []Filter, lines chan<- stri
 				if include, line := includeLine(lineBuf, filters); include {
 					lines <- line
 					nlCount++
-					if nlCount == numLines {
+					if numLines > 0 && nlCount == numLines {
 						close(lines)
 						close(errChan)
 						return

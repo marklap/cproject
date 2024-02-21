@@ -1,3 +1,4 @@
+// Test utilities.
 package cproject
 
 import (
@@ -20,10 +21,12 @@ func StringSlicesEqual(s1, s2 []string) bool {
 	return true
 }
 
+// Fixture for the content in a synthetic file or temporary file.
 func FxtContent() string {
 	return "There are 2 hard problems in computer science:\ncache invalidation,\nnaming things,\nand off-by-1 errors."
 }
 
+// Creates a temporary file with the contents of `content`.
 func FxtFile(t *testing.T, content string) (*os.File, error) {
 	fh, err := os.CreateTemp(os.TempDir(), PackageName)
 	if err != nil {
@@ -44,10 +47,7 @@ func FxtFile(t *testing.T, content string) (*os.File, error) {
 	return fh, nil
 }
 
+// Create a new `LogFile` with the given path and file handle.
 func FxtLogFile(path string, file *os.File) (*LogFile, error) {
 	return NewLogFile(path, WithFile(file))
-}
-
-func FxtFilteredLogFile(lf *LogFile, substrings []string) *FilteredLogFile {
-	return NewFilteredLogFile(lf, AddFilter(NewMatchAnySubstring(WithSubstrings(substrings))))
 }

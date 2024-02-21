@@ -1,3 +1,4 @@
+// JSON utility functions for handlers.
 package handlers
 
 import (

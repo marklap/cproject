@@ -1,7 +1,6 @@
 package cproject
 
 import (
-	"bufio"
 	"fmt"
 	"os"
 )
@@ -11,14 +10,8 @@ type LogFileReader interface {
 	// Path is the path to the log file being read.
 	Path() string
 
-	// ReadLines returns a string slice, one string per line in the log file.
-	ReadLines() ([]string, error)
-
-	// TailLines returns a string slice of the last `n` lines of the log file; one string per line in the log file.
-	TailLines(int) ([]string, error)
-
 	// YieldLines returns a string channel and an error channel for streaming lines from a log file.
-	YieldLines(int, []Filter) (chan string, chan error)
+	YieldLines(int, ...Filter) (chan string, chan error)
 
 	// Close closes the log file.
 	Close() error
@@ -72,37 +65,8 @@ func (f *LogFile) Path() string {
 	return f.path
 }
 
-// ReadLines returns a string slice, one string per line in the log file.
-func (l *LogFile) ReadLines() ([]string, error) {
-	var content []string
-	scanner := bufio.NewScanner(l.file)
-	for scanner.Scan() {
-		if err := scanner.Err(); err != nil {
-			return nil, err
-		}
-		content = append(content, scanner.Text())
-	}
-	return content, nil
-}
-
-// TailLines returns a string slice of the last `n` lines in the log file.
-// TODO: make this more efficient - this will suck for large files.
-func (l *LogFile) TailLines(n int) ([]string, error) {
-	content, err := l.ReadLines()
-	if err != nil {
-		return nil, err
-	}
-
-	lc := len(content)
-	if n > lc {
-		return content, nil
-	}
-
-	return content[lc-n:], nil
-}
-
 // YieldLines returns a string channel and an error channel for streaming lines from a log file.
-func (l *LogFile) YieldLines(numLines int, filters []Filter) (chan string, chan error) {
+func (l *LogFile) YieldLines(numLines int, filters ...Filter) (chan string, chan error) {
 	lines := make(chan string, 1)
 	errChan := make(chan error, 1)
 
