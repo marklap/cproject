@@ -31,6 +31,9 @@ To start the server using the defaults, execute the following command:
 
 To start the server with a customized configuration, reference the [Command Line Usage](#command-line-usage) section or execute `./bin/project -h` to see the help information.
 
+> **NOTE**: Ensure the server is started with a user account that has permissions to read the files that exist in 
+> the directories provided with the `-prefixes` argument when starting the server.
+
 ### Tail a Log File
 
 #### Requests

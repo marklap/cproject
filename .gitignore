@@ -21,4 +21,4 @@
 go.work
 
 .vscode/
-testdata/largefile.csv
+testdata/*.csv
