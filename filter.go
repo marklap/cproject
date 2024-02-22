@@ -60,13 +60,3 @@ func (f *MatchAnySubstring) Include(s string) bool {
 	}
 	return false
 }
-
-// MockFilter is used in testing.
-type MockFilter struct {
-	IncludeResult bool
-}
-
-// Include will return whatever value was defined as the `IncludeResult`.
-func (f *MockFilter) Include(s string) bool {
-	return f.IncludeResult
-}

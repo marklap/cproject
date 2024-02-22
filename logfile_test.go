@@ -191,3 +191,26 @@ func TestLogFileYieldLinesFiltered(t *testing.T) {
 		})
 	}
 }
+
+func TestClose(t *testing.T) {
+	content := cproject.FxtContent()
+	file, err := cproject.FxtFile(t, content)
+	if err != nil {
+		t.Error(err)
+	}
+
+	logFile, err := cproject.FxtLogFile(file.Name(), file)
+	if err != nil {
+		t.Error(err)
+	}
+
+	err = logFile.Close()
+	if err != nil {
+		t.Errorf("unsuccessful close of file - expected success")
+	}
+	err = logFile.Close()
+	if err == nil {
+		t.Errorf("no error returned - expected error on second attempt at close")
+	}
+
+}

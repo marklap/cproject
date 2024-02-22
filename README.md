@@ -112,17 +112,33 @@ Usage of ./bin/cproject:
 
 ### Build the Application
 
-Ensure you have go 1.20+ installed.
+Ensure you have [go 1.20+](https://go.dev/dl/) installed.
 
-To build for *nix/Mac use the following command:
+To build using Make:
+```
+make build
+```
+
+To build for *nix/Mac using the go build tool:
 ```
 go build -o ./bin/cproject ./cmd/
 ```
 
-To build for Windows use the following command:
+To build for Windows using the go build tool:
 ```
 go build -o ./bin/cproject.exe ./cmd/
 ```
 
-> **NOTE:** To build a statically linked executable, set the environment variable `CGO_ENABLED=0` and include the
-> `-installsuffix 'static' -ldflags "-s -w"` argument in your build command.
+### Running Tests
+
+Run tests using Make:
+
+```
+make test
+```
+
+Run tests using go test tool:
+
+```
+go test -v
+```
