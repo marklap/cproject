@@ -1,3 +1,4 @@
+// Ping handler for health/liveness (and early dev).
 package handlers
 
 import (
@@ -6,6 +7,7 @@ import (
 	"net/http"
 )
 
+// PingHandler handles requests for `/ping“.
 func PingHandler(logger *log.Logger) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		logger.Println("ping")

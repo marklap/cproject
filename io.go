@@ -117,19 +117,32 @@ func includeLine(lineBuf *LineBuffer, filters []Filter) (bool, string) {
 	return false, line
 }
 
+// yieldLines reads up to `numLines` lines from the provided file. The file is read in reverse building
+// lines as they are identified (line = SOF,\n; \n,\n; \n,EOF). If `numLines` is 0 or less, all lines are returned.
+// If `filters` are provided, only lines that pass the filters are returned. When a line is identified and passes
+// filters, it is yielded to the lines channel. If an error is encountered, processes stops and an error is returned
+// on the `errChan`. When `yieldLines` is successful, both the lines channel will be closed with no further values.
+//
+// TODO: Dissect this function into smaller, managable functions.
 func yieldLines(file *os.File, numLines int, filters []Filter, lines chan<- string, errChan chan<- error) {
 	// ensure we rewind the pointer when we're done
 	defer func() { file.Seek(0, io.SeekStart) }()
 
 	var (
-		bufSz int64  = stdBufSize
-		buf   []byte = make([]byte, bufSz)
-		pos   int64  = 0
+		// bufSz is the size of the read buffer.
+		bufSz int64 = stdBufSize
+		// buf is the read buffer.
+		buf []byte = make([]byte, bufSz)
+		// pos is the current seek position of the file.
+		pos int64 = 0
 
-		nlCount   = 0
+		// nlCount collects the count of yielded lines.
+		nlCount = 0
+		// firstRead is a flag that, when true, indicates we haven't read any lines yet.
 		firstRead = true
 	)
 
+	// Determine the best seek position to start reading from.
 	pos, err := startPos(bufSz, file)
 	if err != nil {
 		close(lines)
@@ -137,6 +150,9 @@ func yieldLines(file *os.File, numLines int, filters []Filter, lines chan<- stri
 		close(errChan)
 		return
 	}
+
+	// If we're not reading from the beginning of the file (because the file is bigger than the buffer), then seek to
+	// that position.
 	if pos > 0 {
 		pos, err = file.Seek(-pos, io.SeekEnd)
 		if err != nil {
@@ -147,8 +163,10 @@ func yieldLines(file *os.File, numLines int, filters []Filter, lines chan<- stri
 		}
 	}
 
+	// lineBuf is buffer that collects bytes from a single line in the file.
 	lineBuf := NewLineBuffer()
 
+	// Loop, reading chunks of the file and yielding lines as they are identified.
 	for {
 		// after this, the seek pos will be pos + sz
 		sz, err := file.Read(buf)
@@ -160,25 +178,31 @@ func yieldLines(file *os.File, numLines int, filters []Filter, lines chan<- stri
 			}
 		}
 
+		// Determine the best start and end index for reading the bytes in the buffer.
 		start, end := sz-1, 0
 		if firstRead {
+			// adjust the start to account for trailing newlines at the end of the file.
 			start -= int(countTrailingNewlines(buf))
 			firstRead = false
 		}
 
+		// Everytime we come across a newline, check to see if we should yield it.
 		for i := start; i >= end; i-- {
 			if buf[i] == newline {
 				if include, line := includeLine(lineBuf, filters); include {
 					lines <- line
 					nlCount++
-					if nlCount == numLines {
+					// If we've yielded the requested number of lines, we're done.
+					if numLines > 0 && nlCount == numLines {
 						close(lines)
 						close(errChan)
 						return
 					}
 				}
+				// Reset the line buffer regardless if we've yielded the line.
 				lineBuf.Reset()
 			} else {
+				// Append the read byte to the line buffer.
 				err := lineBuf.WriteByte(buf[i])
 				if err != nil {
 					close(lines)
@@ -188,8 +212,8 @@ func yieldLines(file *os.File, numLines int, filters []Filter, lines chan<- stri
 			}
 		}
 
-		// if we've read less than a full buffer size then we've truncated the buffer
-		// on the previous pass and reached the beginning of the file and we're done.'
+		// If we've read less than a full buffer size then we've truncated the buffer
+		// on the previous pass and reached the beginning of the file and we're done.
 		if sz < int(stdBufSize) {
 			if include, line := includeLine(lineBuf, filters); include {
 				lines <- line

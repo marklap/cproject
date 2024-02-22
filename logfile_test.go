@@ -3,8 +3,6 @@ package cproject_test
 import (
 	"errors"
 	"os"
-	"reflect"
-	"strings"
 	"testing"
 
 	"github.com/marklap/cproject"
@@ -20,8 +18,8 @@ func TestNewLogFile(t *testing.T) {
 	}{
 		{
 			desc:          "logFileExists",
-			path:          "./testdata/the_wind_and_the_sun.txt",
-			wantPath:      "./testdata/the_wind_and_the_sun.txt",
+			path:          "./testdata/bartender.txt",
+			wantPath:      "./testdata/bartender.txt",
 			errIs:         func(err error) bool { return err == nil },
 			wantErrIsDesc: "error is nil",
 		}, {
@@ -45,125 +43,151 @@ func TestNewLogFile(t *testing.T) {
 	}
 }
 
-func TestLogFileReadLines(t *testing.T) {
-	file, err := cproject.FxtFile(t, cproject.FxtContent())
-	if err != nil {
-		t.Error(err)
-	}
-	logFile, err := cproject.FxtLogFile(file.Name(), file)
-	if err != nil {
-		t.Error(err)
-	}
-
-	want := strings.Split(cproject.FxtContent(), "\n")
-	got, err := logFile.ReadLines()
-	if err != nil {
-		t.Error(err)
-	}
-
-	if !cproject.StringSlicesEqual(want, got) {
-		t.Errorf("unexpected content - want: %#v, got: %#v", want, got)
-	}
-}
-
-func TestLogFileTailLines(t *testing.T) {
-	file, err := cproject.FxtFile(t, cproject.FxtContent())
-	if err != nil {
-		t.Error(err)
-	}
-	logFile, err := cproject.FxtLogFile(file.Name(), file)
-	if err != nil {
-		t.Error(err)
-	}
-
-	content := strings.Split(cproject.FxtContent(), "\n")
-	want := content[len(content)-2:]
-	got, err := logFile.TailLines(2)
-	if err != nil {
-		t.Error(err)
-	}
-
-	if !cproject.StringSlicesEqual(want, got) {
-		t.Errorf("unexpected content - want: %#v, got: %#v", want, got)
-	}
-}
-
-func TestNewFilteredLogFile(t *testing.T) {
-	fxtLogFile, err := cproject.NewLogFile("./testdata/the_wind_and_the_sun.txt")
-	if err != nil {
-		t.Errorf("error creating log file fixture: %s", err)
-	}
-
+func TestLogFileYieldLines(t *testing.T) {
 	testCases := []struct {
-		desc            string
-		logFile         *cproject.LogFile
-		addFilter       cproject.Filter
-		wantLogFilePath string
-		wantFilters     []cproject.Filter
+		desc  string
+		lines int
+		want  []string
 	}{
 		{
-			desc:            "addFilter",
-			logFile:         fxtLogFile,
-			addFilter:       &cproject.MockFilter{},
-			wantLogFilePath: "./testdata/the_wind_and_the_sun.txt",
-			wantFilters: []cproject.Filter{
-				&cproject.MockFilter{},
+			desc:  "lastOne",
+			lines: 1,
+			want: []string{
+				"and off-by-1 errors.",
+			},
+		}, {
+			desc:  "lastTwo",
+			lines: 2,
+			want: []string{
+				"and off-by-1 errors.",
+				"naming things,",
+			},
+		}, {
+			desc:  "lastThree",
+			lines: 3,
+			want: []string{
+				"and off-by-1 errors.",
+				"naming things,",
+				"cache invalidation,",
+			},
+		}, {
+			desc:  "sameAsActual",
+			lines: 4,
+			want: []string{
+				"and off-by-1 errors.",
+				"naming things,",
+				"cache invalidation,",
+				"There are 2 hard problems in computer science:",
+			},
+		}, {
+			desc:  "moreThanActual",
+			lines: 10,
+			want: []string{
+				"and off-by-1 errors.",
+				"naming things,",
+				"cache invalidation,",
+				"There are 2 hard problems in computer science:",
 			},
 		},
 	}
 	for _, tC := range testCases {
 		t.Run(tC.desc, func(t *testing.T) {
-			got := cproject.NewFilteredLogFile(tC.logFile, cproject.AddFilter(tC.addFilter))
-			if tC.wantLogFilePath != got.Path() {
-				t.Errorf("unexpected log file path - want: %s, got: %s", tC.wantLogFilePath, got.Path())
+			content := cproject.FxtContent()
+			file, err := cproject.FxtFile(t, content)
+			if err != nil {
+				t.Error(err)
 			}
-			if !reflect.DeepEqual(tC.wantFilters, got.Filters()) {
-				t.Errorf("unexpected filter members - want: %v, got: %v", tC.wantFilters, got.Filters())
+
+			logFile, err := cproject.FxtLogFile(file.Name(), file)
+			if err != nil {
+				t.Error(err)
+			}
+
+			lines, errChan := logFile.YieldLines(tC.lines)
+
+			var got []string
+
+			for line := range lines {
+				got = append(got, line)
+			}
+			err = <-errChan
+			if err != nil {
+				t.Error(err)
+			}
+
+			if !cproject.StringSlicesEqual(tC.want, got) {
+				t.Errorf("unexpected results - want: %#v, got: %#v", tC.want, got)
 			}
 		})
 	}
 }
 
-func TestFilteredLogFileReadLines(t *testing.T) {
-	file, err := cproject.FxtFile(t, cproject.FxtContent())
-	if err != nil {
-		t.Error(err)
+func TestLogFileYieldLinesFiltered(t *testing.T) {
+	testCases := []struct {
+		desc    string
+		lines   int
+		filters []cproject.Filter
+		want    []string
+	}{
+		{
+			desc:  "lastOneMoreMatches",
+			lines: 1,
+			filters: []cproject.Filter{
+				cproject.NewMatchAnySubstring(cproject.WithSubstrings([]string{"cache", "thing"})),
+			},
+			want: []string{
+				"naming things,",
+			},
+		}, {
+			desc:  "lastTwoSameMatches",
+			lines: 2,
+			filters: []cproject.Filter{
+				cproject.NewMatchAnySubstring(cproject.WithSubstrings([]string{"cache", "thing"})),
+			},
+			want: []string{
+				"naming things,",
+				"cache invalidation,",
+			},
+		}, {
+			desc:  "lastThreeLessMatches",
+			lines: 3,
+			filters: []cproject.Filter{
+				cproject.NewMatchAnySubstring(cproject.WithSubstrings([]string{"cache", "thing"})),
+			},
+			want: []string{
+				"naming things,",
+				"cache invalidation,",
+			},
+		},
 	}
-	logFile, err := cproject.FxtLogFile(file.Name(), file)
-	if err != nil {
-		t.Error(err)
-	}
+	for _, tC := range testCases {
+		t.Run(tC.desc, func(t *testing.T) {
+			content := cproject.FxtContent()
+			file, err := cproject.FxtFile(t, content)
+			if err != nil {
+				t.Error(err)
+			}
 
-	filtLogFile := cproject.FxtFilteredLogFile(logFile, []string{"things", "cache"})
-	want := []string{"cache invalidation,", "naming things,"}
-	got, err := filtLogFile.ReadLines()
-	if err != nil {
-		t.Error(err)
-	}
+			logFile, err := cproject.FxtLogFile(file.Name(), file)
+			if err != nil {
+				t.Error(err)
+			}
 
-	if !cproject.StringSlicesEqual(want, got) {
-		t.Errorf("unexpected content - want: %#v, got: %#v", want, got)
-	}
-}
+			lines, errChan := logFile.YieldLines(tC.lines, tC.filters...)
 
-func TestFilteredLogFileTailLines(t *testing.T) {
-	file, err := cproject.FxtFile(t, cproject.FxtContent())
-	if err != nil {
-		t.Error(err)
-	}
-	logFile, err := cproject.FxtLogFile(file.Name(), file)
-	if err != nil {
-		t.Error(err)
-	}
+			var got []string
 
-	filtLogFile := cproject.FxtFilteredLogFile(logFile, []string{"things", "cache"})
-	want := []string{"naming things,"}
-	got, err := filtLogFile.TailLines(1)
-	if err != nil {
-		t.Error(err)
-	}
+			for line := range lines {
+				got = append(got, line)
+			}
+			err = <-errChan
+			if err != nil {
+				t.Error(err)
+			}
 
-	if !cproject.StringSlicesEqual(want, got) {
-		t.Errorf("unexpected content - want: %#v, got: %#v", want, got)
+			if !cproject.StringSlicesEqual(tC.want, got) {
+				t.Errorf("unexpected results - want: %#v, got: %#v", tC.want, got)
+			}
+		})
 	}
 }

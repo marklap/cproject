@@ -1,6 +1,8 @@
+// Command line interface for the application.
 package main
 
 import (
+	"flag"
 	"fmt"
 	"log"
 	"net/http"
@@ -11,37 +13,55 @@ import (
 )
 
 const (
-	ProjectName       = "C-Project"
-	DefaultListenIP   = "0.0.0.0"
-	DefaultListenPort = 8080
-	DefaultRootPath   = "/var/log"
+	// ProjectName is the name of this project.
+	ProjectName = "C-Project"
 
-	ROOTPATHS_ENV_VAR = "CPROJECT_ROOTPATHS"
+	// DefaultListenIP is the default IP address to listen on.
+	DefaultListenIP = "0.0.0.0"
+
+	// DefaultListenPort is the default port to listen on.
+	DefaultListenPort = 8080
+
+	// DefaultPathPrefixes is the default path to use for path validation.
+	DefaultPathPrefixes = "/var/log"
+
+	// PathPrefixesEnvVar is the environment variable that specifies the allowable path prefixes.
+	PathPrefixesEnvVar = "CPROJECT_PATH_PREFIXES"
 )
 
-var hostname string
-var rootPathsList string
-var rootPaths []string
+var (
+	hostname         string
+	listenIP         string
+	listenPort       int
+	pathPrefixesList string
+	pathPrefixes     []string
+)
 
 var logger = log.Default()
 
 func init() {
 	hostname, _ = os.Hostname()
-	rootPathsList = os.Getenv(ROOTPATHS_ENV_VAR)
-	if rootPathsList == "" {
-		rootPathsList = DefaultRootPath
+
+	flag.StringVar(&listenIP, "ip", DefaultListenIP, "IP address to listen on")
+	flag.IntVar(&listenPort, "port", DefaultListenPort, "port to listen on")
+	flag.StringVar(&pathPrefixesList, "prefixes", DefaultPathPrefixes,
+		fmt.Sprintf("path prefixes to use for path validation [%q deliminted]", os.PathListSeparator))
+	flag.Parse()
+
+	if pathPrefixesList == "" {
+		pathPrefixesList = DefaultPathPrefixes
 	}
-	rootPaths = strings.Split(rootPathsList, string(os.PathListSeparator))
+	pathPrefixes = strings.Split(pathPrefixesList, string(os.PathListSeparator))
 }
 
 func main() {
 	mux := http.NewServeMux()
 
 	mux.Handle("/ping", handlers.PingHandler(logger))
-	mux.Handle("/tail", handlers.TailHandler(logger, hostname, rootPaths))
+	mux.Handle("/tail", handlers.TailHandler(logger, fmt.Sprintf("%s:%d", hostname, listenPort), pathPrefixes))
 
-	listenAddr := fmt.Sprintf("%s:%d", DefaultListenIP, DefaultListenPort)
+	listenAddr := fmt.Sprintf("%s:%d", listenIP, listenPort)
 	logger.Printf("%s API server is listening on %s...", ProjectName, listenAddr)
-	logger.Printf(" - root paths: %v", rootPathsList)
+	logger.Printf(" - root paths: %v", pathPrefixesList)
 	logger.Fatal(http.ListenAndServe(listenAddr, mux))
 }
