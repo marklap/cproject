@@ -13,49 +13,62 @@ const (
 	newline byte = '\n'
 )
 
-// LineBuffer is a wrapper around a bytes.Buffer. The underlying buffer stores bytes in reverse order
-// of how they're found in the log file.
-type LineBuffer struct {
-	buf *bytes.Buffer
+// LineBuffer describes methods of interacting with a single line of a file.
+type LineBuffer interface {
+	// Offset returns the byte offset position of the start of the line in the file. A -1 indicates no offset has
+	// been recorded (expected at initialization and after reset).
+	Offset() int
+	// Buffer returns the buffer that holds the line content.
+	Buffer() *bytes.Buffer
+	// Len returns the byte count of the content currently in the buffer.
+	Len() int
+	// Reset clears the buffer.
+	Reset()
+	// WriteByte writes a single byte to the buffer also indicating it's byte offset in the file.
+	WriteByte(int, byte) error
+	// Line returns the offset of the start of the line and the string value of the bytes in the buffer.
+	Line() (int, string)
 }
 
-// NewLineBufferFromString creates a new buffer with the initial contents set to the provided string.
-func NewLineBufferFromString(s string) *LineBuffer {
-	return &LineBuffer{
-		buf: bytes.NewBufferString(s),
-	}
+// TailLineBuffer stores bytes in reverse order of how they're found in the log file (i.e. end first).
+type TailLineBuffer struct {
+	offset int
+	buf    *bytes.Buffer
 }
 
-// NewLineBuffer creates a new empty buffer.
-func NewLineBuffer() *LineBuffer {
-	return &LineBuffer{
-		buf: bytes.NewBuffer([]byte{}),
+// NewTailLineBuffer creates a new empty buffer.
+func NewTailLineBuffer() *TailLineBuffer {
+	return &TailLineBuffer{
+		offset: -1,
+		buf:    bytes.NewBuffer([]byte{}),
 	}
 }
 
 // Returns the length of the buffer.
-func (b *LineBuffer) Len() int {
+func (b *TailLineBuffer) Len() int {
 	return b.buf.Len()
 }
 
 // Reset resets the buffer.
-func (b *LineBuffer) Reset() {
+func (b *TailLineBuffer) Reset() {
+	b.offset = -1
 	b.buf.Reset()
 }
 
 // WriteByte writes a single byte to the buffer.
-func (b *LineBuffer) WriteByte(c byte) error {
+func (b *TailLineBuffer) WriteByte(offset int, c byte) error {
+	b.offset = offset
 	return b.buf.WriteByte(c)
 }
 
-// String returns the content of the buffer in the correct order (the order they are arranged in the log file).
-func (b *LineBuffer) String() string {
+// Line returns the offset of the start of the line and the string value of the bytes in the buffer.
+func (b *TailLineBuffer) Line() (int, string) {
 	bufLen := b.buf.Len()
 	if bufLen == 0 {
-		return ""
+		return -1, ""
 	}
 	if bufLen == 1 {
-		return string(b.buf.String())
+		return b.offset, b.buf.String()
 	}
 
 	buf := make([]byte, b.buf.Len())
@@ -65,7 +78,89 @@ func (b *LineBuffer) String() string {
 		buf[i], buf[j] = buf[j], buf[i]
 	}
 
-	return string(buf)
+	return b.offset, string(buf)
+}
+
+// LineYielder describes the behavior of a value that reads a text file looking for lines that match a set of filters.
+type LineYielder interface {
+	// YieldLines yields (to a "lines" channel) a single line matching any of the provided filters up to
+	// n number of lines.
+	YieldLines(*os.File, int, []Filter)
+	// SendLine yields a line from the file wrapped in a LineBuffer interface.
+	SendLine(LineBuffer) error
+	// Close indicates there no more lines will be yielded. An error may be included if the close action was triggered
+	// by an error.
+	Close(error)
+	// LinesChan returns a channel for consuming the lines that are yielded.
+	LinesChan() chan LineBuffer
+	// ErrChan returns a channel for consuming an error that interrupted processing of the file. No further lines will
+	// be yielded if an error is received on this channel and both the lines and error channel will be closed.
+	ErrChan() chan error
+}
+
+// TailEndFirst is a LineYielder that reads lines starting from the end of the file reading toward the beginning
+// of the file and returning matching lines in the order they are identified.
+type TailEndFirst struct {
+	lines chan LineBuffer
+	err   chan error
+}
+
+// SendLine delivers a line to the lines channel.
+func (t *TailEndFirst) SendLine(line LineBuffer) {
+	t.lines <- line
+}
+
+// Lines returns a channel for communicating lines. Each line that matches a filter will be delivered via the lines
+// channel. The lines and errors channels are always closed together.
+func (t *TailEndFirst) LinesChan() chan LineBuffer {
+	return t.lines
+}
+
+// Errors returns a channel used for communicating errors. Any error sent over the errors channel closes both the
+// lines and errors channels.
+func (t *TailEndFirst) ErrChan() chan error {
+	return t.err
+}
+
+// Close sends an error over the error channel (if provided) and closes the lines and error channels.
+func (t *TailEndFirst) Close(err error) {
+	defer close(t.err)
+	defer close(t.lines)
+	if err != nil {
+		t.err <- err
+	}
+}
+
+// tailEndFirstOpt are options for customizing a TailEndFirst value.
+type tailEndFirstOpt func(*TailEndFirst)
+
+// WithLinesChannel creates a TailEndFirst LineYielder with the provided channel.
+func WithLinesChannel(lines chan LineBuffer) tailEndFirstOpt {
+	return func(t *TailEndFirst) {
+		t.lines = lines
+	}
+}
+
+// WithLinesChannel creates a TailEndFirst LineYielder with the provided channel.
+func WithErrChannel(err chan error) tailEndFirstOpt {
+	return func(t *TailEndFirst) {
+		t.err = err
+	}
+}
+
+// NewTailEndFirst creates and returns a TailEndFirst LineYielder. The default lines and err channels have a capacity
+// of 1.
+func NewTailEndFirst(opts ...tailEndFirstOpt) *TailEndFirst {
+	t := &TailEndFirst{
+		lines: make(chan LineBuffer, 1),
+		err:   make(chan error, 1),
+	}
+
+	for _, opt := range opts {
+		opt(t)
+	}
+
+	return t
 }
 
 // startPos determines the best starting position of the seek depending on the size of the file.
@@ -164,7 +259,7 @@ func yieldLines(file *os.File, numLines int, filters []Filter, lines chan<- stri
 	}
 
 	// lineBuf is buffer that collects bytes from a single line in the file.
-	lineBuf := NewLineBuffer()
+	lineBuf := NewTailLineBuffer()
 
 	// Loop, reading chunks of the file and yielding lines as they are identified.
 	for {

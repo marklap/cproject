@@ -101,19 +101,19 @@ func TestIncludeLine(t *testing.T) {
 	}{
 		{
 			desc:     "noFilters",
-			buf:      NewLineBufferFromString("cba"),
+			buf:      NewTailLineBufferFromString("cba"),
 			filters:  nil,
 			wantBool: true,
 			wantStr:  "abc",
 		}, {
 			desc:     "emptyBuffer",
-			buf:      NewLineBuffer(),
+			buf:      NewTailLineBuffer(),
 			filters:  nil,
 			wantBool: false,
 			wantStr:  "",
 		}, {
 			desc: "singleFilterMatch",
-			buf:  NewLineBufferFromString("cba"),
+			buf:  NewTailLineBufferFromString("cba"),
 			filters: []Filter{
 				NewMatchAnySubstring(WithSubstrings([]string{"abc"})),
 			},
@@ -121,7 +121,7 @@ func TestIncludeLine(t *testing.T) {
 			wantStr:  "abc",
 		}, {
 			desc: "singleFilterNoMatch",
-			buf:  NewLineBufferFromString("cba"),
+			buf:  NewTailLineBufferFromString("cba"),
 			filters: []Filter{
 				NewMatchAnySubstring(WithSubstrings([]string{"gorilla"})),
 			},
@@ -129,7 +129,7 @@ func TestIncludeLine(t *testing.T) {
 			wantStr:  "abc",
 		}, {
 			desc: "multipleFilterMatch",
-			buf:  NewLineBufferFromString("cba"),
+			buf:  NewTailLineBufferFromString("cba"),
 			filters: []Filter{
 				NewMatchAnySubstring(WithSubstrings([]string{"gorilla"})),
 				NewMatchAnySubstring(WithSubstrings([]string{"abc"})),
@@ -138,7 +138,7 @@ func TestIncludeLine(t *testing.T) {
 			wantStr:  "abc",
 		}, {
 			desc: "multipleFilterNoMatch",
-			buf:  NewLineBufferFromString("cba"),
+			buf:  NewTailLineBufferFromString("cba"),
 			filters: []Filter{
 				NewMatchAnySubstring(WithSubstrings([]string{"gorilla"})),
 				NewMatchAnySubstring(WithSubstrings([]string{"monkey"})),
