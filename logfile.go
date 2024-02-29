@@ -67,12 +67,15 @@ func (f *LogFile) Path() string {
 
 // YieldLines returns a string channel and an error channel for streaming lines from a log file.
 func (l *LogFile) YieldLines(numLines int, filters ...Filter) (chan string, chan error) {
-	lines := make(chan string, 1)
-	errChan := make(chan error, 1)
 
-	go yieldLines(l.file, numLines, filters, lines, errChan)
+	tail := NewTailEndFirst(l.file)
 
-	return lines, errChan
+	linesChan := tail.LinesChan()
+	errChan := tail.ErrChan()
+
+	go tail.YieldLines(numLines, filters)
+
+	return linesChan, errChan
 }
 
 // Close closes the log file handle.

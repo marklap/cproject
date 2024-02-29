@@ -91,105 +91,36 @@ func TestStartPos(t *testing.T) {
 	}
 }
 
-func TestIncludeLine(t *testing.T) {
-	testCases := []struct {
-		desc     string
-		buf      *LineBuffer
-		filters  []Filter
-		wantBool bool
-		wantStr  string
-	}{
-		{
-			desc:     "noFilters",
-			buf:      NewTailLineBufferFromString("cba"),
-			filters:  nil,
-			wantBool: true,
-			wantStr:  "abc",
-		}, {
-			desc:     "emptyBuffer",
-			buf:      NewTailLineBuffer(),
-			filters:  nil,
-			wantBool: false,
-			wantStr:  "",
-		}, {
-			desc: "singleFilterMatch",
-			buf:  NewTailLineBufferFromString("cba"),
-			filters: []Filter{
-				NewMatchAnySubstring(WithSubstrings([]string{"abc"})),
-			},
-			wantBool: true,
-			wantStr:  "abc",
-		}, {
-			desc: "singleFilterNoMatch",
-			buf:  NewTailLineBufferFromString("cba"),
-			filters: []Filter{
-				NewMatchAnySubstring(WithSubstrings([]string{"gorilla"})),
-			},
-			wantBool: false,
-			wantStr:  "abc",
-		}, {
-			desc: "multipleFilterMatch",
-			buf:  NewTailLineBufferFromString("cba"),
-			filters: []Filter{
-				NewMatchAnySubstring(WithSubstrings([]string{"gorilla"})),
-				NewMatchAnySubstring(WithSubstrings([]string{"abc"})),
-			},
-			wantBool: true,
-			wantStr:  "abc",
-		}, {
-			desc: "multipleFilterNoMatch",
-			buf:  NewTailLineBufferFromString("cba"),
-			filters: []Filter{
-				NewMatchAnySubstring(WithSubstrings([]string{"gorilla"})),
-				NewMatchAnySubstring(WithSubstrings([]string{"monkey"})),
-			},
-			wantBool: false,
-			wantStr:  "abc",
-		},
-	}
-	for _, tC := range testCases {
-		t.Run(tC.desc, func(t *testing.T) {
-			gotBool, gotStr := includeLine(tC.buf, tC.filters)
-			if tC.wantBool != gotBool {
-				t.Errorf("unexpected include line boolean - want: %t, got: %t", tC.wantBool, gotBool)
-			}
-			if tC.wantStr != gotStr {
-				t.Errorf("unexpected include line string - want: %s, got: %s", tC.wantStr, gotStr)
-			}
-		})
-	}
-}
-
 func TestYieldLines(t *testing.T) {
 	testCases := []struct {
-		desc  string
-		lines int
-		want  []string
+		desc     string
+		numLines int
+		want     []string
 	}{
 		{
-			desc:  "lastOne",
-			lines: 1,
+			desc:     "lastOne",
+			numLines: 1,
 			want: []string{
 				"and off-by-1 errors.",
 			},
 		}, {
-			desc:  "lastTwo",
-			lines: 2,
+			desc:     "lastTwo",
+			numLines: 2,
 			want: []string{
 				"and off-by-1 errors.",
 				"naming things,",
 			},
 		}, {
-			desc:  "lastThree",
-			lines: 3,
+			desc:     "lastThree",
+			numLines: 3,
 			want: []string{
 				"and off-by-1 errors.",
 				"naming things,",
 				"cache invalidation,",
 			},
 		}, {
-			desc:  "sameAsActual",
-			lines: 4,
+			desc:     "sameAsActual",
+			numLines: 4,
 			want: []string{
 				"and off-by-1 errors.",
 				"naming things,",
@@ -197,8 +128,8 @@ func TestYieldLines(t *testing.T) {
 				"There are 2 hard problems in computer science:",
 			},
 		}, {
-			desc:  "moreThanActual",
-			lines: 10,
+			desc:     "moreThanActual",
+			numLines: 10,
 			want: []string{
 				"and off-by-1 errors.",
 				"naming things,",
@@ -220,14 +151,16 @@ func TestYieldLines(t *testing.T) {
 				t.Error(err)
 			}
 
-			lines := make(chan string, 1)
-			errChan := make(chan error, 1)
+			tail := NewTailEndFirst(logFile.file)
 
-			go yieldLines(logFile.file, tC.lines, nil, lines, errChan)
+			linesChan := tail.LinesChan()
+			errChan := tail.ErrChan()
+
+			go tail.YieldLines(tC.numLines, nil)
 
 			var got []string
 
-			for line := range lines {
+			for line := range linesChan {
 				got = append(got, line)
 			}
 			err = <-errChan
@@ -244,14 +177,14 @@ func TestYieldLines(t *testing.T) {
 
 func TestYieldLinesFiltered(t *testing.T) {
 	testCases := []struct {
-		desc    string
-		lines   int
-		filters []Filter
-		want    []string
+		desc     string
+		numLines int
+		filters  []Filter
+		want     []string
 	}{
 		{
-			desc:  "lastOneMoreMatches",
-			lines: 1,
+			desc:     "lastOneMoreMatches",
+			numLines: 1,
 			filters: []Filter{
 				NewMatchAnySubstring(WithSubstrings([]string{"cache", "thing"})),
 			},
@@ -259,8 +192,8 @@ func TestYieldLinesFiltered(t *testing.T) {
 				"naming things,",
 			},
 		}, {
-			desc:  "lastTwoSameMatches",
-			lines: 2,
+			desc:     "lastTwoSameMatches",
+			numLines: 2,
 			filters: []Filter{
 				NewMatchAnySubstring(WithSubstrings([]string{"cache", "thing"})),
 			},
@@ -269,8 +202,8 @@ func TestYieldLinesFiltered(t *testing.T) {
 				"cache invalidation,",
 			},
 		}, {
-			desc:  "lastThreeLessMatches",
-			lines: 3,
+			desc:     "lastThreeLessMatches",
+			numLines: 3,
 			filters: []Filter{
 				NewMatchAnySubstring(WithSubstrings([]string{"cache", "thing"})),
 			},
@@ -293,14 +226,16 @@ func TestYieldLinesFiltered(t *testing.T) {
 				t.Error(err)
 			}
 
-			lines := make(chan string, 1)
-			errChan := make(chan error, 1)
+			tail := NewTailEndFirst(logFile.file)
 
-			go yieldLines(logFile.file, tC.lines, tC.filters, lines, errChan)
+			linesChan := tail.LinesChan()
+			errChan := tail.ErrChan()
+
+			go tail.YieldLines(tC.numLines, tC.filters)
 
 			var got []string
 
-			for line := range lines {
+			for line := range linesChan {
 				got = append(got, line)
 			}
 			err = <-errChan
@@ -313,4 +248,10 @@ func TestYieldLinesFiltered(t *testing.T) {
 			}
 		})
 	}
+}
+
+func NewTailLineBufferFromString(s string) LineBuffer {
+	buf := NewTailLineBuffer()
+	buf.buf.WriteString(s)
+	return buf
 }
