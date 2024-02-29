@@ -37,43 +37,28 @@ type TailResponseChunk struct {
 	Line string `json:"line"`
 }
 
-func validPrefix(path string, pathPrefixes []string) bool {
-	// only valid path prefixes are allowed
-	for _, pathPrefix := range pathPrefixes {
-		if strings.HasPrefix(filepath.Clean(path), pathPrefix) {
-			return true
-		}
-	}
-	return false
-}
-
 // TailHandler handles requests to tail a log file.
 func TailHandler(logger *log.Logger, host string, pathPrefixes []string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// decode the incoming request
-		decoder := json.NewDecoder(r.Body)
-		var req TailRequest
-		if err := decoder.Decode(&req); err != nil {
+
+		req, err := decodeRequest(r)
+		if err != nil {
 			logger.Printf("bad tail request - error: %s", err)
 			WriteJSONBadRequest(w, err)
 			return
 		}
-		defer r.Body.Close()
 		logger.Printf("tail request: %s", req.String())
 
-		// validation
-		if !validPrefix(req.Path, pathPrefixes) {
+		if !isValidPath(req.Path, pathPrefixes) {
 			logger.Printf("bad tail request - error: invalid path: %s", req.Path)
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
+		numLines := numLinesFromRequest(req)
+		filters := filtersFromRequest(req)
 
 		// create a log file value
-		var (
-			err     error
-			logFile cproject.LogFileReader
-		)
-		logFile, err = cproject.NewLogFile(req.Path)
+		logFile, err := cproject.NewLogFile(req.Path)
 		if err != nil {
 			logger.Print(err)
 			WriteJSONBadRequest(w, err)
@@ -81,25 +66,11 @@ func TailHandler(logger *log.Logger, host string, pathPrefixes []string) http.Ha
 		}
 		defer logFile.Close()
 
-		// determine num lines to return
-		numLines := req.NumLines
-		if numLines == 0 {
-			numLines = DefaultNumLines
-		}
-
-		// create filters if requested
-		filters := []cproject.Filter{}
-		if len(req.MatchSubstrings) > 0 {
-			filters = append(filters,
-				cproject.NewMatchAnySubstring(
-					cproject.WithSubstrings(req.MatchSubstrings),
-					cproject.WithCaseSensitivity(req.CaseSensitive)),
-			)
-		}
-
-		// tail file
+		// initialize stats
 		start := time.Now()
 		lineBytesOut := int64(0)
+
+		// tail log file
 		lines, errChan := logFile.YieldLines(numLines, filters...)
 		for line := range lines {
 			lineBytesOut += int64(len([]byte(line)))
@@ -118,4 +89,45 @@ func TailHandler(logger *log.Logger, host string, pathPrefixes []string) http.Ha
 		}
 		logger.Printf("tail request - line bytes out written: %d [took %s]", lineBytesOut, time.Since(start))
 	})
+}
+
+func decodeRequest(r *http.Request) (TailRequest, error) {
+	defer r.Body.Close()
+
+	decoder := json.NewDecoder(r.Body)
+	var req TailRequest
+	if err := decoder.Decode(&req); err != nil {
+		return req, err
+	}
+	return req, nil
+}
+
+func isValidPath(path string, pathPrefixes []string) bool {
+	// only valid path prefixes are allowed
+	for _, pathPrefix := range pathPrefixes {
+		if strings.HasPrefix(filepath.Clean(path), pathPrefix) {
+			return true
+		}
+	}
+	return false
+}
+
+func numLinesFromRequest(req TailRequest) int {
+	n := req.NumLines
+	if n == 0 {
+		n = DefaultNumLines
+	}
+	return n
+}
+
+func filtersFromRequest(req TailRequest) []cproject.Filter {
+	filters := []cproject.Filter{}
+	if len(req.MatchSubstrings) > 0 {
+		filters = append(filters,
+			cproject.NewMatchAnySubstring(
+				cproject.WithSubstrings(req.MatchSubstrings),
+				cproject.WithCaseSensitivity(req.CaseSensitive)),
+		)
+	}
+	return filters
 }
