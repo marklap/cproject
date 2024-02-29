@@ -41,24 +41,17 @@ type TailResponseChunk struct {
 func TailHandler(logger *log.Logger, host string, pathPrefixes []string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
-		req, err := decodeRequest(r)
+		// validate request and transform to tail config
+		cfg, err := tailCfgFromRequest(r, pathPrefixes)
 		if err != nil {
 			logger.Printf("bad tail request - error: %s", err)
 			WriteJSONBadRequest(w, err)
 			return
 		}
-		logger.Printf("tail request: %s", req.String())
+		logger.Printf("tail request - %s", cfg)
 
-		if !isValidPath(req.Path, pathPrefixes) {
-			logger.Printf("bad tail request - error: invalid path: %s", req.Path)
-			w.WriteHeader(http.StatusNotFound)
-			return
-		}
-		numLines := numLinesFromRequest(req)
-		filters := filtersFromRequest(req)
-
-		// create a log file value
-		logFile, err := cproject.NewLogFile(req.Path)
+		// create a log file wrapper
+		logFile, err := cproject.NewLogFile(cfg.path)
 		if err != nil {
 			logger.Print(err)
 			WriteJSONBadRequest(w, err)
@@ -71,7 +64,7 @@ func TailHandler(logger *log.Logger, host string, pathPrefixes []string) http.Ha
 		lineBytesOut := int64(0)
 
 		// tail log file
-		lines, errChan := logFile.YieldLines(numLines, filters...)
+		lines, errChan := logFile.YieldLines(cfg.numLines, cfg.filters...)
 		for line := range lines {
 			lineBytesOut += int64(len([]byte(line)))
 			chunk := TailResponseChunk{
@@ -89,6 +82,36 @@ func TailHandler(logger *log.Logger, host string, pathPrefixes []string) http.Ha
 		}
 		logger.Printf("tail request - line bytes out written: %d [took %s]", lineBytesOut, time.Since(start))
 	})
+}
+
+type tailCfg struct {
+	path          string
+	numLines      int
+	filters       []cproject.Filter
+	caseSensitive bool
+}
+
+func (c tailCfg) String() string {
+	return fmt.Sprintf("path: %s, numLines: %d, filters(count): %d, caseSensitive: %t",
+		c.path, c.numLines, len(c.filters), c.caseSensitive)
+}
+
+func tailCfgFromRequest(r *http.Request, pathPrefixes []string) (*tailCfg, error) {
+	req, err := decodeRequest(r)
+	if err != nil {
+		return nil, err
+	}
+
+	if !isValidPath(req.Path, pathPrefixes) {
+		return nil, fmt.Errorf("invalid path: %s", req.Path)
+	}
+
+	return &tailCfg{
+		path:          req.Path,
+		numLines:      numLinesFromRequest(req),
+		filters:       filtersFromRequest(req),
+		caseSensitive: req.CaseSensitive,
+	}, nil
 }
 
 func decodeRequest(r *http.Request) (TailRequest, error) {
