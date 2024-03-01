@@ -11,7 +11,7 @@ import (
 
 const (
 	// stdBufSize is the number of bytes read at a time when reading the log file.
-	stdBufSize int64 = 4096
+	stdBufSize int64 = 1024 * 1024 // 1MB
 	// newline is a newline
 	newline byte = '\n'
 )
@@ -290,8 +290,8 @@ func (t *TailEndFirst) YieldLines(numLines int, filters []Filter) {
 		// on the previous pass and reached the beginning of the file and we're done.
 		if chunkSz < int(stdBufSize) {
 			t.yieldIfIncluded(lineBuf, filters)
-			t.Close(nil)
-			return
+			// t.Close(nil)
+			// return
 		}
 
 		if err := t.advance(); err != nil {
