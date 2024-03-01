@@ -9,12 +9,7 @@ import (
 	"strings"
 )
 
-const (
-	// stdBufSize is the number of bytes read at a time when reading the log file.
-	stdBufSize int64 = 1024 * 1024 // 1MB
-	// newline is a newline
-	newline byte = '\n'
-)
+const newline byte = '\n'
 
 // LineBuffer describes methods of interacting with a single line of a file.
 type LineBuffer interface {
@@ -130,15 +125,10 @@ type LineYielder interface {
 // TailEndFirst is a LineYielder that reads lines starting from the end of the file reading toward the beginning
 // of the file and returning matching lines in the order they are identified.
 type TailEndFirst struct {
-	file       *os.File
-	linesChan  chan string
-	errChan    chan error
-	readBufSz  int64
-	readBuf    []byte
-	pos        int64
-	lastWhence int
-	sentLines  int
-	firstRead  bool
+	file      *os.File
+	linesChan chan string
+	errChan   chan error
+	sentLines int
 }
 
 // File returns the file that is being read.
@@ -173,45 +163,6 @@ func (t *TailEndFirst) Close(err error) {
 	}
 }
 
-func (t *TailEndFirst) seekTo(pos int64, whence int) error {
-	if pos == t.pos && t.lastWhence == whence {
-		// nothing to do
-		return nil
-	}
-
-	pos, err := t.file.Seek(pos, whence)
-	if err != nil {
-		return err
-	}
-
-	t.pos = pos
-	t.lastWhence = whence
-
-	return nil
-}
-
-func (t *TailEndFirst) setStartPos() {
-	var (
-		pos int64
-		err error
-	)
-
-	// Determine the best seek position to start reading from.
-	if pos, err = startPos(t.readBufSz, t.file); err != nil {
-		t.Close(err)
-		return
-	}
-
-	// If we're not reading from the beginning of the file (because the file is bigger than the buffer), then seek to
-	// that position.
-	if pos > 0 {
-		if err := t.seekTo(-pos, io.SeekEnd); err != nil {
-			t.Close(err)
-			return
-		}
-	}
-}
-
 func (t *TailEndFirst) yieldIfIncluded(lineBuf LineBuffer, filters []Filter) {
 	lineLen := lineBuf.Len()
 
@@ -233,45 +184,28 @@ func (t *TailEndFirst) yieldIfIncluded(lineBuf LineBuffer, filters []Filter) {
 	}
 }
 
-func (t *TailEndFirst) advance() error {
-	offset := t.readBufSz * 2
-
-	if t.pos-offset > 0 {
-		if err := t.seekTo(-offset, io.SeekCurrent); err != nil {
-			return err
-		}
-	} else {
-		t.readBuf = make([]byte, t.pos)
-		if err := t.seekTo(0, io.SeekStart); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
+// YieldLines yields into the lines channel a single line matching any of the provided filters up to
+// numLines number of lines.
 func (t *TailEndFirst) YieldLines(numLines int, filters []Filter) {
 	defer func() { t.File().Seek(0, io.SeekStart) }()
 
-	t.setStartPos()
+	rdr, err := NewReadChunksFromEnd(t.File())
+	if err != nil {
+		t.Close(err)
+		return
+	}
 
 	lineBuf := NewTailLineBuffer()
 
 	for {
-
-		chunkSz, err := t.file.Read(t.readBuf)
-		if chunkSz == 0 || err != nil {
-			t.Close(err)
+		chunk, readErr := rdr.Next()
+		if readErr != nil && readErr != io.EOF {
+			t.Close(readErr)
 			return
 		}
 
-		startOffset, endOffset := chunkSz-1, 0
-		if t.firstRead {
-			startOffset -= int(countTrailingNewlines(t.readBuf))
-			t.firstRead = false
-		}
-
-		for i := startOffset; i >= endOffset; i-- {
-			if t.readBuf[i] == newline {
+		for i := len(chunk) - 1; i >= 0; i-- {
+			if chunk[i] == newline {
 				t.yieldIfIncluded(lineBuf, filters)
 				if numLines > 0 && t.sentLines == numLines {
 					t.Close(nil)
@@ -279,23 +213,16 @@ func (t *TailEndFirst) YieldLines(numLines int, filters []Filter) {
 				}
 				lineBuf.Reset()
 			} else {
-				if err := lineBuf.AppendByte(t.pos+int64(i), t.readBuf[i]); err != nil {
+				if err := lineBuf.AppendByte(rdr.Offset()+int64(i), chunk[i]); err != nil {
 					t.Close(err)
 					return
 				}
 			}
 		}
 
-		// If we've read less than a full buffer size then we've truncated the buffer
-		// on the previous pass and reached the beginning of the file and we're done.
-		if chunkSz < int(stdBufSize) {
+		if readErr == io.EOF {
 			t.yieldIfIncluded(lineBuf, filters)
-			// t.Close(nil)
-			// return
-		}
-
-		if err := t.advance(); err != nil {
-			t.Close(err)
+			t.Close(nil)
 			return
 		}
 	}
@@ -319,42 +246,18 @@ func WithErrChannel(errChan chan error) tailEndFirstOpt {
 	}
 }
 
-// WithReadBufferSize sets the buffer size.
-func WithReadBufferSize(sz int64) tailEndFirstOpt {
-	return func(t *TailEndFirst) {
-		t.readBufSz = sz
-	}
-}
-
 func NewTailEndFirst(file *os.File, opts ...tailEndFirstOpt) *TailEndFirst {
 	t := &TailEndFirst{
 		file:      file,
 		linesChan: make(chan string, 1),
 		errChan:   make(chan error, 1),
-		readBufSz: stdBufSize,
-		firstRead: true,
 	}
 
 	for _, opt := range opts {
 		opt(t)
 	}
 
-	t.readBuf = make([]byte, t.readBufSz)
-
 	return t
-}
-
-// startPos determines the best starting position of the seek depending on the size of the file.
-// If the file size is less than or equal to the buffer size, we'll read the whole thing.
-func startPos(bufSz int64, file *os.File) (int64, error) {
-	stat, err := file.Stat()
-	if err != nil {
-		return -1, err
-	}
-	if stat.Size() <= bufSz {
-		return 0, nil
-	}
-	return bufSz, nil
 }
 
 // countTrailingNewlines counts the number of newlines at the end of the buffer.
@@ -370,6 +273,7 @@ func countTrailingNewlines(buf []byte) int64 {
 	return nlCount
 }
 
+// ListDir lists all regular files in a pathPrefix.
 func ListDir(pathPrefix string) ([]string, error) {
 	var files []string
 

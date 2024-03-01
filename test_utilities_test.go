@@ -3,6 +3,7 @@ package cproject
 
 import (
 	"io"
+	"math/rand"
 	"os"
 	"testing"
 )
@@ -50,4 +51,16 @@ func FxtFile(t *testing.T, content string) (*os.File, error) {
 // Create a new `LogFile` with the given path and file handle.
 func FxtLogFile(path string, file *os.File) (*LogFile, error) {
 	return NewLogFile(path, WithFile(file))
+}
+
+// FxtRandomContent creates an n length string of random ascii chars, spaces and newlines.
+func FxtRandomContent(n int) string {
+	chars := []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 \n")
+	lenChars := len(chars)
+
+	buf := make([]rune, n)
+	for i := range buf {
+		buf[i] = chars[rand.Intn(lenChars)]
+	}
+	return string(buf)
 }

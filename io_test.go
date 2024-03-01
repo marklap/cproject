@@ -45,55 +45,6 @@ func TestCountTrailingNewlines(t *testing.T) {
 	}
 }
 
-func TestStartPos(t *testing.T) {
-	content := FxtContent()
-	file, err := FxtFile(t, content)
-	if err != nil {
-		t.Error(err)
-	}
-
-	stat, err := file.Stat()
-	if err != nil {
-		t.Error(err)
-	}
-
-	logFile, err := FxtLogFile(file.Name(), file)
-	if err != nil {
-		t.Error(err)
-	}
-
-	testCases := []struct {
-		desc  string
-		bufSz int64
-		want  int64
-	}{
-		{
-			desc:  "fileSzGreater",
-			bufSz: stat.Size() - 1,
-			want:  stat.Size() - 1,
-		}, {
-			desc:  "fileSzEqual",
-			bufSz: stat.Size(),
-			want:  0,
-		}, {
-			desc:  "fileSzLessThan",
-			bufSz: stat.Size() + 1,
-			want:  0,
-		},
-	}
-	for _, tC := range testCases {
-		t.Run(tC.desc, func(t *testing.T) {
-			got, err := startPos(tC.bufSz, logFile.file)
-			if err != nil {
-				t.Error(err)
-			}
-			if tC.want != got {
-				t.Errorf("unexpected start position - want: %d, got: %d", tC.want, got)
-			}
-		})
-	}
-}
-
 func TestYieldLines(t *testing.T) {
 	testCases := []struct {
 		desc     string
