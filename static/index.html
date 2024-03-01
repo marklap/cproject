@@ -79,7 +79,7 @@
             results.empty();
 
             const req = {
-                "case_sensitive": $("#case-sensitive").val() == "true" ? true : false,
+                "case_sensitive": $("#case-sensitive").is(":checked"),
                 "match_substrings": $("#match-substrings").val().split(/\r?\n/),
                 "num_lines": Number($("#num-lines").val()),
                 "path": $("#path").val(),
