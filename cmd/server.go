@@ -57,8 +57,10 @@ func init() {
 func main() {
 	mux := http.NewServeMux()
 
+	mux.Handle("/", http.FileServer(http.Dir("./static")))
 	mux.Handle("/ping", handlers.PingHandler(logger))
 	mux.Handle("/tail", handlers.TailHandler(logger, fmt.Sprintf("%s:%d", hostname, listenPort), pathPrefixes))
+	mux.Handle("/listing", handlers.ListingHandler(logger, pathPrefixes))
 
 	listenAddr := fmt.Sprintf("%s:%d", listenIP, listenPort)
 	logger.Printf("%s API server is listening on %s...", ProjectName, listenAddr)

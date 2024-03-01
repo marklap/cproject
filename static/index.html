@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <title>C-Project</title>
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"
+        integrity="sha256-/JqT3SQfawRcv/BIHPThkBvs0OEvtFFmqPF/lYI/Cxo=" crossorigin="anonymous"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/purecss@3.0.0/build/base-min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/purecss@3.0.0/build/pure-min.css"
+        integrity="sha384-X38yfunGUhNzHpBaEBsWLO+A0HDYOQi8ufWDkZ0k9e0eXz/tH3II7uKZ9msv++Ls" crossorigin="anonymous">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <style>
+        html {
+            padding: 10px;
+        }
+
+        #results {
+            font-family: 'Courier New', Courier, monospace;
+            margin: 10px;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>C-Project</h1>
+    <div class="pure-g">
+        <div class="pure-u-1-1">
+            <form id="tail" class="pure-form-stacked">
+                <fieldset>
+                    <legend>Tail a file</legend>
+
+                    <label for="path">Log File</label>
+                    <select id="path">
+                    </select>
+
+                    <label for="num-lines">Number of Lines (default 10)</label>
+                    <input id="num-lines" type="text" placeholder="integer">
+
+                    <label for="match-substrings">Matches</label>
+                    <textarea id="match-substrings" placeholder="one substring match per line"></textarea>
+
+                    <label for="case-sensitive" class="pure-checkbox">Case Sensitive?
+                        <input type="checkbox" id="case-sensitive" value="true" />
+                    </label>
+
+                    <button type="submit" class="pure-button pure-button-primary">Tail</button>
+                </fieldset>
+            </form>
+        </div>
+        <div class="pure-u-1-1">
+            <div id="results"></div>
+        </div>
+    </div>
+
+    <script>
+        $(function () {
+            logFileListing();
+            bindFormSubmit();
+        });
+
+        function logFileListing() {
+            $.get("/listing", function (data) {
+                data.forEach((file) => {
+                    $("#path").append("<option>" + file + "</option>");
+                });
+            });
+        }
+
+        function bindFormSubmit() {
+            $("#tail").on("submit", function (event) {
+                event.preventDefault();
+                tail();
+            });
+        }
+
+        function tail() {
+            const results = $("#results");
+            results.empty();
+
+            const req = {
+                "case_sensitive": $("#case-sensitive").val() == "true" ? true : false,
+                "match_substrings": $("#match-substrings").val().split(/\r?\n/),
+                "num_lines": Number($("#num-lines").val()),
+                "path": $("#path").val(),
+            };
+
+            $.post("/tail", JSON.stringify(req), function (data) {
+                data.split(/\r?\n/).forEach((lineData) => {
+                    const line = jQuery.parseJSON(lineData);
+                    results.prepend("<div>" + line.line + "</div>");
+                });
+            });
+        }
+    </script>
+</body>
+
+</html>

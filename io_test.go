@@ -1,6 +1,9 @@
 package cproject
 
 import (
+	"fmt"
+	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -247,6 +250,38 @@ func TestYieldLinesFiltered(t *testing.T) {
 				t.Errorf("unexpected results - want: %#v, got: %#v", tC.want, got)
 			}
 		})
+	}
+}
+
+func TestListDir(t *testing.T) {
+	var thisFullPath string
+	var ok bool
+	if _, thisFullPath, _, ok = runtime.Caller(0); !ok {
+		t.Error("failed to get test file path")
+	}
+
+	testDataDir := filepath.Join(filepath.Dir(thisFullPath), "testdata")
+
+	wantFiles := []string{
+		filepath.Join(testDataDir, "bartender.txt"),
+		filepath.Join(testDataDir, "number_lines.txt"),
+	}
+	gotFiles, err := ListDir(testDataDir)
+	if err != nil {
+		t.Error(err)
+	}
+
+	for _, want := range wantFiles {
+		found := false
+		for _, got := range gotFiles {
+			if want == got {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Error(fmt.Errorf("file not returned in dir listing - want: %s, got: %s", want, gotFiles))
+		}
 	}
 }
 

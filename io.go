@@ -3,7 +3,9 @@ package cproject
 import (
 	"bytes"
 	"io"
+	"io/fs"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -366,4 +368,26 @@ func countTrailingNewlines(buf []byte) int64 {
 		}
 	}
 	return nlCount
+}
+
+func ListDir(pathPrefix string) ([]string, error) {
+	var files []string
+
+	err := fs.WalkDir(os.DirFS(pathPrefix), ".", func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+
+		if d.Type().IsRegular() {
+			files = append(files, filepath.Join(pathPrefix, path))
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return files, nil
 }
